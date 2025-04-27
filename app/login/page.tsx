@@ -60,7 +60,7 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col justify-center py-12 sm:px-6 lg:px-8 bg-green-50 overflow-y-auto">
+    <div className="min-h-screen flex flex-col justify-center py-12 sm:px-6 lg:px-8 bg-green-50">
       <div className="sm:mx-auto sm:w-full sm:max-w-md">
         <div className="flex justify-center">
           <Leaf className="h-12 w-12 text-green-600" />
@@ -70,7 +70,7 @@ export default function LoginPage() {
       </div>
 
       <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
-        <div className="bg-white py-8 px-4 shadow sm:rounded-lg sm:px-10 mb-8">
+        <div className="bg-white py-8 px-4 shadow sm:rounded-lg sm:px-10">
           {error && (
             <Alert variant="destructive" className="mb-6">
               <AlertDescription>{error}</AlertDescription>
