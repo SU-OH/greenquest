@@ -3,7 +3,7 @@
 import { ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage"
 import { useFirebase } from "./firebase-provider"
 import { getStorage } from "firebase/storage"
-import { app } from "./config"
+import { app } from "./firebase-config"
 
 const storage = getStorage(app)
 
