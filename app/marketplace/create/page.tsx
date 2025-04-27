@@ -166,7 +166,7 @@ export default function CreateListingPage() {
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Condition</FormLabel>
-                  <Select onValueChange={field.onChange} defaultValue={field.value}>
+                  <Select onValueChange={(value) => field.onChange(value)} defaultValue={field.value}>
                     <FormControl>
                       <SelectTrigger>
                         <SelectValue placeholder="Select condition" />

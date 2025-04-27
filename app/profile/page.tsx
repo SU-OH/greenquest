@@ -45,6 +45,8 @@ export default function ProfilePage() {
 
   // Fetch user data only when auth is ready and user exists
   useEffect(() => {
+    let isMounted = true
+
     const fetchData = async () => {
       if (!authReady || !user) return
 
@@ -81,43 +83,47 @@ export default function ProfilePage() {
         } catch (profileError) {
           console.error("Error fetching user profile:", profileError)
         }
-        setUserProfile(profile)
+        if (isMounted) setUserProfile(profile)
 
         // Get user posts with empty fallback
         try {
           const posts = await postsFirestore.getUserPosts(user.uid)
-          setUserPosts(posts)
+          if (isMounted) setUserPosts(posts)
         } catch (postsError) {
           console.error("Error fetching user posts:", postsError)
-          setUserPosts([])
+          if (isMounted) setUserPosts([])
         }
 
         // Get user listings with empty fallback
         try {
           const listings = await marketplaceFirestore.getUserListings(user.uid)
-          setUserListings(listings)
+          if (isMounted) setUserListings(listings)
         } catch (listingsError) {
           console.error("Error fetching user listings:", listingsError)
-          setUserListings([])
+          if (isMounted) setUserListings([])
         }
 
         // Get user activities
         try {
           const activities = await activityFirestore.getUserActivities(user.uid)
-          setUserActivities(activities)
+          if (isMounted) setUserActivities(activities)
         } catch (activitiesError) {
           console.error("Error fetching user activities:", activitiesError)
-          setUserActivities([])
+          if (isMounted) setUserActivities([])
         }
       } catch (error) {
         console.error("Error in profile data fetching:", error)
       } finally {
-        setIsLoading(false)
+        if (isMounted) setIsLoading(false)
       }
     }
 
     fetchData()
-  }, [user, authReady, userFirestore, postsFirestore, marketplaceFirestore, activityFirestore])
+
+    return () => {
+      isMounted = false
+    }
+  }, [authReady, user?.uid]) // user.uid만 의존성으로 사용
 
   const handleSignOut = async () => {
     try {
@@ -129,7 +135,7 @@ export default function ProfilePage() {
   }
 
   // Show loading state
-  if (loading || (authReady && user && isLoading)) {
+  if (loading || !authReady) {
     return (
       <div className="flex justify-center items-center min-h-screen">
         <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-green-500"></div>
