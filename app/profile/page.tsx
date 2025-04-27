@@ -5,11 +5,15 @@ import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { AppHeader } from "@/components/app-header"
-import { Settings, LogOut, Award, ShoppingBag, Leaf } from "lucide-react"
+import { Settings, LogOut, Award, ShoppingBag, Leaf, Activity } from "lucide-react"
 import { useAuth } from "@/lib/firebase/auth-context"
 import { useUserFirestore } from "@/lib/firebase/firestore"
 import { usePostsFirestore } from "@/lib/firebase/firestore"
 import { useMarketplaceFirestore } from "@/lib/firebase/firestore"
+import { useActivityFirestore } from "@/lib/firebase/firestore"
+import { ProfileEditDialog } from "@/components/profile-edit-dialog"
+import { Card } from "@/components/ui/card"
+import { Badge } from "@/components/ui/badge"
 
 export default function ProfilePage() {
   const { user, loading, signOut } = useAuth()
@@ -17,9 +21,11 @@ export default function ProfilePage() {
   const userFirestore = useUserFirestore()
   const postsFirestore = usePostsFirestore()
   const marketplaceFirestore = useMarketplaceFirestore()
+  const activityFirestore = useActivityFirestore()
   const [userProfile, setUserProfile] = useState<any>(null)
   const [userPosts, setUserPosts] = useState<any[]>([])
   const [userListings, setUserListings] = useState<any[]>([])
+  const [userActivities, setUserActivities] = useState<any[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [authReady, setAuthReady] = useState(false)
 
@@ -94,6 +100,15 @@ export default function ProfilePage() {
           console.error("Error fetching user listings:", listingsError)
           setUserListings([])
         }
+
+        // Get user activities
+        try {
+          const activities = await activityFirestore.getUserActivities(user.uid)
+          setUserActivities(activities)
+        } catch (activitiesError) {
+          console.error("Error fetching user activities:", activitiesError)
+          setUserActivities([])
+        }
       } catch (error) {
         console.error("Error in profile data fetching:", error)
       } finally {
@@ -102,7 +117,7 @@ export default function ProfilePage() {
     }
 
     fetchData()
-  }, [user, authReady, userFirestore, postsFirestore, marketplaceFirestore])
+  }, [user, authReady, userFirestore, postsFirestore, marketplaceFirestore, activityFirestore])
 
   const handleSignOut = async () => {
     try {
@@ -146,9 +161,7 @@ export default function ProfilePage() {
             </div>
           </div>
           <div className="flex gap-2">
-            <Button variant="outline" size="icon">
-              <Settings className="h-5 w-5" />
-            </Button>
+            <ProfileEditDialog />
             <Button variant="outline" size="icon" onClick={handleSignOut}>
               <LogOut className="h-5 w-5" />
             </Button>
@@ -171,35 +184,53 @@ export default function ProfilePage() {
         </div>
 
         <div className="space-y-4">
-          <div className="flex items-center justify-between p-4 bg-white rounded-lg shadow-sm">
-            <div className="flex items-center">
-              <div className="bg-green-100 p-2 rounded-full mr-3">
-                <Award className="h-5 w-5 text-green-600" />
+          <Card className="p-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center">
+                <div className="bg-green-100 p-2 rounded-full mr-3">
+                  <Award className="h-5 w-5 text-green-600" />
+                </div>
+                <span>My Achievements</span>
               </div>
-              <span>My Achievements</span>
+              <span className="text-gray-400">→</span>
             </div>
-            <span className="text-gray-400">→</span>
-          </div>
+          </Card>
 
-          <div className="flex items-center justify-between p-4 bg-white rounded-lg shadow-sm">
-            <div className="flex items-center">
-              <div className="bg-green-100 p-2 rounded-full mr-3">
-                <ShoppingBag className="h-5 w-5 text-green-600" />
+          <Card className="p-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center">
+                <div className="bg-green-100 p-2 rounded-full mr-3">
+                  <ShoppingBag className="h-5 w-5 text-green-600" />
+                </div>
+                <span>My Listings</span>
               </div>
-              <span>My Listings</span>
+              <Badge variant="secondary">{userListings.length} items</Badge>
             </div>
-            <span className="text-sm text-gray-500">{userListings.length} items</span>
-          </div>
+          </Card>
 
-          <div className="flex items-center justify-between p-4 bg-white rounded-lg shadow-sm">
-            <div className="flex items-center">
-              <div className="bg-green-100 p-2 rounded-full mr-3">
-                <Leaf className="h-5 w-5 text-green-600" />
+          <Card className="p-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center">
+                <div className="bg-green-100 p-2 rounded-full mr-3">
+                  <Activity className="h-5 w-5 text-green-600" />
+                </div>
+                <span>Recent Activities</span>
               </div>
-              <span>Activity History</span>
+              <Badge variant="secondary">{userActivities.length} activities</Badge>
             </div>
-            <span className="text-gray-400">→</span>
-          </div>
+            {userActivities.length > 0 && (
+              <div className="mt-4 space-y-2">
+                {userActivities.slice(0, 3).map((activity) => (
+                  <div key={activity.id} className="text-sm text-gray-600">
+                    <p>{activity.description}</p>
+                    <p className="text-xs text-gray-400">
+                      {new Date(activity.timestamp?.toDate?.() || activity.timestamp).toLocaleDateString()}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </Card>
         </div>
 
         <div className="mt-6">
@@ -207,12 +238,12 @@ export default function ProfilePage() {
           {userPosts.length > 0 ? (
             <div className="space-y-4">
               {userPosts.slice(0, 2).map((post) => (
-                <div key={post.id} className="p-4 bg-white rounded-lg shadow-sm">
+                <Card key={post.id} className="p-4">
                   <p className="line-clamp-2">{post.content}</p>
                   <p className="text-xs text-gray-500 mt-2">
                     {new Date(post.timestamp?.toDate?.() || post.timestamp).toLocaleDateString()}
                   </p>
-                </div>
+                </Card>
               ))}
               {userPosts.length > 2 && (
                 <Button variant="outline" className="w-full">
