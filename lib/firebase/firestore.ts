@@ -190,7 +190,8 @@ export const useActivityFirestore = () => {
 
     try {
       const activitiesRef = collection(db, "activities")
-      const q = query(activitiesRef, where("userId", "==", userId), orderBy("timestamp", "desc"), limit(limitCount))
+      // 단순화된 쿼리: userId로만 필터링하고 클라이언트에서 정렬
+      const q = query(activitiesRef, where("userId", "==", userId), limit(limitCount))
 
       const querySnapshot = await getDocs(q)
       const activities: DocumentData[] = []
@@ -199,7 +200,12 @@ export const useActivityFirestore = () => {
         activities.push({ id: doc.id, ...doc.data() })
       })
 
-      return activities
+      // 클라이언트에서 timestamp 기준으로 정렬
+      return activities.sort((a, b) => {
+        const timeA = a.timestamp?.toDate?.() || a.timestamp
+        const timeB = b.timestamp?.toDate?.() || b.timestamp
+        return timeB - timeA
+      })
     } catch (error) {
       console.error("Error getting user activities:", error)
       return []
