@@ -21,13 +21,15 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className={`${inter.className} min-h-screen overflow-y-auto`}>
+      <body className={`${inter.className} min-h-screen`}>
         <ThemeProvider attribute="class" defaultTheme="light">
           <FirebaseProvider>
-            <MobileNav />
-            <main className="min-h-screen">
-              {children}
-            </main>
+            <div className="flex flex-col min-h-screen">
+              <MobileNav />
+              <main className="flex-1 overflow-y-auto">
+                {children}
+              </main>
+            </div>
           </FirebaseProvider>
         </ThemeProvider>
       </body>
