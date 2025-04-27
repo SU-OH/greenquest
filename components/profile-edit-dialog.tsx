@@ -13,6 +13,7 @@ import { useUserFirestore } from "@/lib/firebase/firestore"
 import { useFirebaseStorage } from "@/lib/firebase/storage"
 import { toast } from "@/components/ui/use-toast"
 import { ImageUpload } from "@/components/image-upload"
+import { Settings } from "lucide-react"
 
 const formSchema = z.object({
   displayName: z.string().min(2, {
