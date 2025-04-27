@@ -408,6 +408,62 @@ export const useMarketplaceFirestore = () => {
     }
   }
 
+  const getListingById = async (listingId: string) => {
+    if (!db) throw new Error("Firestore not initialized")
+
+    try {
+      const listingRef = doc(db, "marketplace", listingId)
+      const listingSnap = await getDoc(listingRef)
+
+      if (listingSnap.exists()) {
+        return { id: listingSnap.id, ...listingSnap.data() }
+      }
+      return null
+    } catch (error) {
+      console.error("Error fetching listing:", error)
+      return null
+    }
+  }
+
+  const likeListing = async (listingId: string, userId: string) => {
+    if (!db) throw new Error("Firestore not initialized")
+
+    try {
+      const listingRef = doc(db, "marketplace", listingId)
+      const listingSnap = await getDoc(listingRef)
+
+      if (listingSnap.exists()) {
+        const listingData = listingSnap.data()
+        const currentLikes = listingData.likes || 0
+
+        await updateDoc(listingRef, {
+          likes: currentLikes + 1,
+        })
+
+        return currentLikes + 1
+      }
+
+      return null
+    } catch (error) {
+      console.error("Error liking listing:", error)
+      return null
+    }
+  }
+
+  const getListingChatCount = async (listingId: string) => {
+    if (!db) throw new Error("Firestore not initialized")
+
+    try {
+      const chatsRef = collection(db, "chats")
+      const q = query(chatsRef, where("listingId", "==", listingId))
+      const querySnapshot = await getDocs(q)
+      return querySnapshot.size
+    } catch (error) {
+      console.error("Error getting chat count:", error)
+      return 0
+    }
+  }
+
   return {
     createListing,
     getListings,
@@ -415,6 +471,9 @@ export const useMarketplaceFirestore = () => {
     getUserListings,
     updateListing,
     deleteListing,
+    getListingById,
+    likeListing,
+    getListingChatCount,
   }
 }
 

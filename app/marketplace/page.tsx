@@ -7,6 +7,7 @@ import { AppHeader } from "@/components/app-header"
 import { useAuth } from "@/lib/firebase/auth-context"
 import { useMarketplaceFirestore } from "@/lib/firebase/firestore"
 import { useUserFirestore } from "@/lib/firebase/firestore"
+import { Heart } from "lucide-react"
 
 export default function MarketplacePage() {
   const { user, loading } = useAuth()
@@ -116,6 +117,37 @@ export default function MarketplacePage() {
 
 function MarketplaceItem({ item }: { item: any }) {
   const router = useRouter()
+  const marketplaceFirestore = useMarketplaceFirestore()
+  const [likes, setLikes] = useState(item.likes || 0)
+  const [chatCount, setChatCount] = useState(0)
+  const [isLoading, setIsLoading] = useState(true)
+
+  useEffect(() => {
+    const fetchCounts = async () => {
+      try {
+        const chatCount = await marketplaceFirestore.getListingChatCount(item.id)
+        setChatCount(chatCount)
+      } catch (error) {
+        console.error("Error fetching counts:", error)
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    fetchCounts()
+  }, [item.id, marketplaceFirestore])
+
+  const handleLike = async (e: React.MouseEvent) => {
+    e.stopPropagation()
+    try {
+      const newLikes = await marketplaceFirestore.likeListing(item.id, item.userId)
+      if (newLikes !== null) {
+        setLikes(newLikes)
+      }
+    } catch (error) {
+      console.error("Error liking item:", error)
+    }
+  }
 
   // Format timestamp
   const formatTimeAgo = (timestamp: any) => {
@@ -175,9 +207,14 @@ function MarketplaceItem({ item }: { item: any }) {
         <p className="font-bold text-lg">${item.price}</p>
         <div className="flex items-center justify-between mt-1">
           <span className="text-xs text-gray-500">{item.condition}</span>
-          <div className="flex items-center gap-1">
-            <span className="text-xs text-gray-500">Chat 2</span>
-            <span className="text-xs text-gray-500">• Likes 5</span>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleLike}
+              className="text-xs text-gray-500 hover:text-red-500 flex items-center gap-1"
+            >
+              <Heart className="h-3 w-3" /> {likes}
+            </button>
+            <span className="text-xs text-gray-500">Chat {chatCount}</span>
           </div>
         </div>
       </div>
