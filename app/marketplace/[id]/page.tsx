@@ -7,13 +7,14 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { AppHeader } from "@/components/app-header"
 import { Heart, MessageCircle, Share, MoreHorizontal } from "lucide-react"
 import { useAuth } from "@/lib/firebase/auth-context"
-import { useMarketplaceFirestore } from "@/lib/firebase/firestore"
+import { useMarketplaceFirestore, useChatFirestore } from "@/lib/firebase/firestore"
 
 export default function ItemDetailPage() {
   const { id } = useParams()
   const router = useRouter()
   const { user, loading } = useAuth()
   const marketplaceFirestore = useMarketplaceFirestore()
+  const chatFirestore = useChatFirestore()
   const [item, setItem] = useState<any>(null)
   const [isLoading, setIsLoading] = useState(true)
 
@@ -48,6 +49,17 @@ export default function ItemDetailPage() {
       router.push("/login")
     }
   }, [user, loading, router])
+
+  const handleStartChat = async () => {
+    if (!user || !item) return
+
+    try {
+      const chatId = await chatFirestore.createChat(item.id, user.uid, item.userId)
+      router.push(`/chats/${chatId}`)
+    } catch (error) {
+      console.error("Error starting chat:", error)
+    }
+  }
 
   if (loading || isLoading) {
     return (
@@ -135,7 +147,7 @@ export default function ItemDetailPage() {
           <Button variant="outline" size="icon" className="rounded-full">
             <MoreHorizontal className="h-5 w-5" />
           </Button>
-          <Button className="flex-1 bg-green-600 hover:bg-green-700">
+          <Button className="flex-1 bg-green-600 hover:bg-green-700" onClick={handleStartChat}>
             <MessageCircle className="h-5 w-5 mr-2" /> Chat with Seller
           </Button>
         </div>

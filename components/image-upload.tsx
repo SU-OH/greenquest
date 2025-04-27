@@ -4,6 +4,7 @@ import { useState, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { ImageIcon, X } from "lucide-react"
 import Image from "next/image"
+import { toast } from "@/components/ui/use-toast"
 
 interface ImageUploadProps {
   onFileSelect: (file: File | null) => void
@@ -18,6 +19,26 @@ export function ImageUpload({ onFileSelect, currentImageUrl, className = "" }: I
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
     if (file) {
+      // Check file size (max 5MB)
+      if (file.size > 5 * 1024 * 1024) {
+        toast({
+          title: "File too large",
+          description: "Please upload an image smaller than 5MB",
+          variant: "destructive",
+        })
+        return
+      }
+
+      // Check file type
+      if (!file.type.match(/image\/(jpeg|png|gif|webp)/)) {
+        toast({
+          title: "Invalid file type",
+          description: "Please upload a JPG, PNG, GIF, or WebP image",
+          variant: "destructive",
+        })
+        return
+      }
+
       // Create preview URL
       const reader = new FileReader()
       reader.onloadend = () => {

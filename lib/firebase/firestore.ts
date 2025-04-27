@@ -418,112 +418,110 @@ export const useMarketplaceFirestore = () => {
   }
 }
 
-// Chat-related functions (new)
+// Chat-related functions
 export const useChatFirestore = () => {
   const { db } = useFirebase()
 
-  const getChats = async (userId: string) => {
+  const createChat = async (listingId: string, buyerId: string, sellerId: string) => {
     if (!db) throw new Error("Firestore not initialized")
 
     try {
-      // In a real app, you'd fetch chats from Firestore
-      // For now, return mock data to avoid permission issues
-      return [
-        {
-          id: "1",
-          name: "Kai Nakamura",
-          avatar: "/diverse-group-city.png",
-          lastMessage: "Is the textbook still available?",
-          timestamp: new Date(Date.now() - 1000 * 60 * 5), // 5 minutes ago
-          unread: 2,
-        },
-        {
-          id: "2",
-          name: "Leilani Wong",
-          avatar: "/diverse-group-city.png",
-          lastMessage: "I can meet tomorrow at the cafeteria",
-          timestamp: new Date(Date.now() - 1000 * 60 * 60), // 1 hour ago
-          unread: 0,
-        },
-        {
-          id: "3",
-          name: "Noah Patel",
-          avatar: "/diverse-group-city.png",
-          lastMessage: "Thanks for the calculator! It works great.",
-          timestamp: new Date(Date.now() - 1000 * 60 * 60 * 24), // 1 day ago
-          unread: 0,
-        },
-      ]
+      // Check if chat already exists
+      const chatsRef = collection(db, "chats")
+      const q = query(
+        chatsRef,
+        where("listingId", "==", listingId),
+        where("participants", "array-contains", buyerId)
+      )
+      const querySnapshot = await getDocs(q)
+
+      if (!querySnapshot.empty) {
+        return querySnapshot.docs[0].id
+      }
+
+      // Create new chat
+      const docRef = await addDoc(chatsRef, {
+        listingId,
+        participants: [buyerId, sellerId],
+        lastMessage: "",
+        lastMessageTime: serverTimestamp(),
+        createdAt: serverTimestamp(),
+      })
+
+      return docRef.id
     } catch (error) {
-      console.error("Error getting chats:", error)
-      return []
+      console.error("Error creating chat:", error)
+      throw error
     }
   }
 
-  const getChatById = async (chatId: string) => {
+  const sendMessage = async (chatId: string, senderId: string, message: string) => {
     if (!db) throw new Error("Firestore not initialized")
 
     try {
-      // In a real app, you'd fetch the chat from Firestore
-      // For now, return mock data to avoid permission issues
-      return {
-        id: chatId,
-        name: "Kai Nakamura",
-        avatar: "/diverse-group-city.png",
-        messages: [
-          {
-            id: "1",
-            sender: "other",
-            text: "Hi there! I saw your listing for the Biology textbook. Is it still available?",
-            timestamp: new Date(Date.now() - 1000 * 60 * 60), // 1 hour ago
-          },
-          {
-            id: "2",
-            sender: "me",
-            text: "Yes, it's still available! Are you interested?",
-            timestamp: new Date(Date.now() - 1000 * 60 * 30), // 30 minutes ago
-          },
-          {
-            id: "3",
-            sender: "other",
-            text: "Great! I'd like to buy it. When can we meet?",
-            timestamp: new Date(Date.now() - 1000 * 60 * 20), // 20 minutes ago
-          },
-          {
-            id: "4",
-            sender: "other",
-            text: "Is the textbook still available?",
-            timestamp: new Date(Date.now() - 1000 * 60 * 5), // 5 minutes ago
-          },
-        ],
-      }
-    } catch (error) {
-      console.error("Error getting chat:", error)
-      return null
-    }
-  }
+      const messagesRef = collection(db, "chats", chatId, "messages")
+      await addDoc(messagesRef, {
+        senderId,
+        message,
+        timestamp: serverTimestamp(),
+      })
 
-  const sendMessage = async (chatId: string, userId: string, message: string) => {
-    if (!db) throw new Error("Firestore not initialized")
-
-    try {
-      // In a real app, you'd add the message to Firestore
-      console.log(`Sending message to chat ${chatId} from user ${userId}: ${message}`)
-      return {
-        id: Date.now().toString(),
-        sender: "me",
-        text: message,
-        timestamp: new Date(),
-      }
+      // Update chat's last message
+      const chatRef = doc(db, "chats", chatId)
+      await updateDoc(chatRef, {
+        lastMessage: message,
+        lastMessageTime: serverTimestamp(),
+      })
     } catch (error) {
       console.error("Error sending message:", error)
       throw error
     }
   }
 
+  const getChatMessages = async (chatId: string) => {
+    if (!db) throw new Error("Firestore not initialized")
+
+    try {
+      const messagesRef = collection(db, "chats", chatId, "messages")
+      const q = query(messagesRef, orderBy("timestamp", "asc"))
+      const querySnapshot = await getDocs(q)
+
+      const messages: DocumentData[] = []
+      querySnapshot.forEach((doc) => {
+        messages.push({ id: doc.id, ...doc.data() })
+      })
+
+      return messages
+    } catch (error) {
+      console.error("Error fetching messages:", error)
+      return []
+    }
+  }
+
+  const getUserChats = async (userId: string) => {
+    if (!db) throw new Error("Firestore not initialized")
+
+    try {
+      const chatsRef = collection(db, "chats")
+      const q = query(chatsRef, where("participants", "array-contains", userId))
+      const querySnapshot = await getDocs(q)
+
+      const chats: DocumentData[] = []
+      querySnapshot.forEach((doc) => {
+        chats.push({ id: doc.id, ...doc.data() })
+      })
+
+      return chats
+    } catch (error) {
+      console.error("Error fetching user chats:", error)
+      return []
+    }
+  }
+
   return {
-    getChats,
-    getChatById,
+    createChat,
     sendMessage,
+    getChatMessages,
+    getUserChats,
   }
 }

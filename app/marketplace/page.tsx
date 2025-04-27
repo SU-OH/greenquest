@@ -147,12 +147,25 @@ function MarketplaceItem({ item }: { item: any }) {
 
   return (
     <div className="flex border-b border-gray-200 pb-4 cursor-pointer" onClick={handleClick}>
-      <div className="h-24 w-24 rounded-md overflow-hidden mr-4 flex-shrink-0">
-        <img
-          src={item.imageUrl || "/placeholder.svg?height=96&width=96&query=product"}
-          alt={item.title}
-          className="h-full w-full object-cover"
-        />
+      <div className="h-24 w-24 rounded-md overflow-hidden mr-4 flex-shrink-0 bg-gray-100">
+        {item.imageUrl ? (
+          <img
+            src={item.imageUrl}
+            alt={item.title}
+            className="h-full w-full object-cover"
+            onError={(e) => {
+              e.currentTarget.src = "/placeholder.svg?height=96&width=96&query=product"
+            }}
+          />
+        ) : (
+          <div className="h-full w-full flex items-center justify-center">
+            <img
+              src="/placeholder.svg?height=96&width=96&query=product"
+              alt="Placeholder"
+              className="h-12 w-12 opacity-50"
+            />
+          </div>
+        )}
       </div>
       <div className="flex-1">
         <h3 className="font-medium line-clamp-1">{item.title}</h3>
