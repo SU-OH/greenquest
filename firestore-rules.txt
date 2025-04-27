@@ -1,0 +1,45 @@
+// 기본 보안 규칙 (개발 중에만 사용)
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 인증된 사용자에게 모든 문서에 대한 읽기/쓰기 권한 부여
+    match /{document=**} {
+      allow read, write: if request.auth != null;
+    }
+    
+    // 사용자 컬렉션에 대한 규칙
+    match /users/{userId} {
+      // 자신의 문서만 읽고 쓸 수 있음
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+      // 다른 사용자는 읽기만 가능
+      allow read: if request.auth != null;
+    }
+    
+    // 상품 컬렉션에 대한 규칙
+    match /products/{productId} {
+      // 모든 인증된 사용자가 읽을 수 있음
+      allow read: if request.auth != null;
+      // 인증된 사용자만 생성 가능
+      allow create: if request.auth != null;
+      // 자신이 등록한 상품만 수정/삭제 가능
+      allow update, delete: if request.auth != null && resource.data.sellerId == request.auth.uid;
+    }
+    
+    // 대화 컬렉션에 대한 규칙
+    match /conversations/{conversationId} {
+      // 대화 참여자만 읽고 쓸 수 있음
+      allow read, write: if request.auth != null && 
+        request.auth.uid in resource.data.participants;
+    }
+    
+    // 게시물 컬렉션에 대한 규칙
+    match /posts/{postId} {
+      // 모든 인증된 사용자가 읽을 수 있음
+      allow read: if request.auth != null;
+      // 인증된 사용자만 생성 가능
+      allow create: if request.auth != null;
+      // 자신이 작성한 게시물만 수정/삭제 가능
+      allow update, delete: if request.auth != null && resource.data.userId == request.auth.uid;
+    }
+  }
+}

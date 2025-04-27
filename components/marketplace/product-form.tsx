@@ -2,9 +2,10 @@
 
 import type React from "react"
 
-import { useState, useRef } from "react"
+import { useState, useRef, useEffect } from "react"
 import { collection, addDoc, serverTimestamp, doc, getDoc } from "firebase/firestore"
-import { db, auth } from "@/lib/firebase"
+import { ref, uploadBytesResumable, getDownloadURL } from "firebase/storage"
+import { db, storage, auth } from "@/lib/firebase"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
@@ -13,7 +14,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useToast } from "@/hooks/use-toast"
 import { Camera, Loader2, AlertCircle } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 
 interface ProductFormProps {
   onSuccess?: () => void
@@ -27,13 +27,13 @@ export default function ProductForm({ onSuccess, onCancel }: ProductFormProps) {
   const [category, setCategory] = useState("")
   const [image, setImage] = useState<File | null>(null)
   const [imagePreview, setImagePreview] = useState<string | null>(null)
-  const [imageUrl, setImageUrl] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [loadingStep, setLoadingStep] = useState<string>("")
   const [uploadProgress, setUploadProgress] = useState(0)
   const [uploadError, setUploadError] = useState<string | null>(null)
   const [skipImage, setSkipImage] = useState(false)
-  const [imageInputMethod, setImageInputMethod] = useState<"upload" | "url">("upload")
+  const [retryCount, setRetryCount] = useState(0)
+  const maxRetries = 3
   const fileInputRef = useRef<HTMLInputElement>(null)
   const { toast } = useToast()
 
@@ -42,11 +42,11 @@ export default function ProductForm({ onSuccess, onCancel }: ProductFormProps) {
       const file = e.target.files[0]
       setSkipImage(false)
 
-      // 파일 크기 체크 (5MB 제한)
-      if (file.size > 5 * 1024 * 1024) {
+      // 파일 크기 체크 (10MB 제한)
+      if (file.size > 10 * 1024 * 1024) {
         toast({
           title: "이미지 크기 초과",
-          description: "이미지 크기는 5MB 이하여야 합니다.",
+          description: "이미지 크기는 10MB 이하여야 합니다.",
           variant: "destructive",
         })
         return
@@ -64,35 +64,95 @@ export default function ProductForm({ onSuccess, onCancel }: ProductFormProps) {
     }
   }
 
-  // 이미지 URL 입력 처리
-  const handleImageUrlChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setImageUrl(e.target.value)
-    setSkipImage(false)
-    setUploadError(null)
-  }
+  // 이미지 크기 줄이기
+  const resizeImage = (file: File): Promise<Blob> => {
+    return new Promise((resolve, reject) => {
+      // 파일 크기가 작으면 그대로 반환
+      if (file.size < 500 * 1024) {
+        // 500KB 미만이면 압축하지 않음
+        file
+          .arrayBuffer()
+          .then((buffer) => {
+            resolve(new Blob([buffer], { type: file.type }))
+          })
+          .catch(reject)
+        return
+      }
 
-  // 이미지 URL 미리보기
-  const handlePreviewImageUrl = () => {
-    if (!imageUrl) {
-      toast({
-        title: "URL을 입력하세요",
-        description: "이미지 URL을 입력해주세요",
-        variant: "destructive",
-      })
-      return
-    }
+      const reader = new FileReader()
+      reader.readAsDataURL(file)
+      reader.onload = (event) => {
+        const img = new Image()
+        img.src = event.target?.result as string
 
-    // URL 유효성 검사
-    try {
-      new URL(imageUrl)
-      setImagePreview(imageUrl)
-    } catch (e) {
-      toast({
-        title: "잘못된 URL",
-        description: "유효한 이미지 URL을 입력해주세요",
-        variant: "destructive",
-      })
-    }
+        img.onload = () => {
+          // 원본 크기 저장
+          const originalWidth = img.width
+          const originalHeight = img.height
+
+          // 목표 크기 계산 (최대 1200px, 원본 비율 유지)
+          let targetWidth = originalWidth
+          let targetHeight = originalHeight
+          const MAX_SIZE = 1200
+
+          if (originalWidth > MAX_SIZE || originalHeight > MAX_SIZE) {
+            if (originalWidth > originalHeight) {
+              targetWidth = MAX_SIZE
+              targetHeight = Math.round(originalHeight * (MAX_SIZE / originalWidth))
+            } else {
+              targetHeight = MAX_SIZE
+              targetWidth = Math.round(originalWidth * (MAX_SIZE / originalHeight))
+            }
+          }
+
+          // 캔버스 생성 및 이미지 그리기
+          const canvas = document.createElement("canvas")
+          canvas.width = targetWidth
+          canvas.height = targetHeight
+
+          const ctx = canvas.getContext("2d")
+          if (!ctx) {
+            reject(new Error("Canvas context not available"))
+            return
+          }
+
+          // 이미지 그리기
+          ctx.drawImage(img, 0, 0, targetWidth, targetHeight)
+
+          // 이미지 포맷 결정 (JPEG로 통일)
+          canvas.toBlob(
+            (blob) => {
+              if (blob) {
+                console.log(`Original size: ${file.size / 1024}KB, Compressed: ${blob.size / 1024}KB`)
+                resolve(blob)
+              } else {
+                // 압축 실패 시 원본 반환
+                file
+                  .arrayBuffer()
+                  .then((buffer) => {
+                    resolve(new Blob([buffer], { type: "image/jpeg" }))
+                  })
+                  .catch(reject)
+              }
+            },
+            "image/jpeg",
+            0.8, // 품질 설정
+          )
+        }
+
+        img.onerror = () => {
+          // 이미지 로드 실패 시 원본 반환
+          file
+            .arrayBuffer()
+            .then((buffer) => {
+              resolve(new Blob([buffer], { type: file.type }))
+            })
+            .catch(reject)
+        }
+      }
+
+      reader.onerror = () => reject(new Error("파일 읽기 실패"))
+    })
   }
 
   // 이미지 없이 진행
@@ -100,12 +160,29 @@ export default function ProductForm({ onSuccess, onCancel }: ProductFormProps) {
     setSkipImage(true)
     setImage(null)
     setImagePreview(null)
-    setImageUrl("")
     setUploadError(null)
   }
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
+  // 재시도 로직
+  useEffect(() => {
+    if (retryCount > 0 && retryCount <= maxRetries && isSubmitting && uploadError) {
+      // 재시도 로직
+      const retryUpload = async () => {
+        setUploadError(null)
+        setLoadingStep(`재시도 중... (${retryCount}/${maxRetries})`)
+        await new Promise((resolve) => setTimeout(resolve, 1000)) // 잠시 대기
+        handleSubmit(new Event("submit") as any, true)
+      }
+
+      retryUpload()
+    }
+  }, [retryCount])
+
+  const handleSubmit = async (e: React.FormEvent, isRetry = false) => {
+    if (!isRetry) {
+      e.preventDefault()
+      setRetryCount(0)
+    }
 
     if (!auth.currentUser) {
       toast({
@@ -126,8 +203,11 @@ export default function ProductForm({ onSuccess, onCancel }: ProductFormProps) {
     }
 
     try {
-      setIsSubmitting(true)
-      setUploadProgress(0)
+      if (!isRetry) {
+        setIsSubmitting(true)
+        setUploadProgress(0)
+      }
+
       const userId = auth.currentUser.uid
 
       // 사용자 정보 가져오기
@@ -143,30 +223,76 @@ export default function ProductForm({ onSuccess, onCancel }: ProductFormProps) {
         console.error("사용자 정보 조회 실패:", error)
       }
 
-      let finalImageUrl = null
+      let imageUrl = null
 
-      // 이미지 처리 (스킵하지 않은 경우)
-      if (!skipImage) {
-        setUploadProgress(30)
+      // 이미지가 있고 스킵하지 않았으면 업로드
+      if (image && !skipImage) {
+        try {
+          setLoadingStep("이미지 처리 중...")
+          setUploadProgress(10)
 
-        // URL 입력 방식인 경우
-        if (imageInputMethod === "url" && imageUrl) {
-          finalImageUrl = imageUrl
-          setUploadProgress(80)
-        }
-        // 파일 업로드 방식인 경우 - CORS 오류로 인해 비활성화
-        else if (imageInputMethod === "upload" && image) {
-          // CORS 오류로 인해 업로드 대신 경고 표시
-          toast({
-            title: "이미지 업로드 제한",
-            description: "CORS 정책으로 인해 이미지 업로드가 제한됩니다. URL을 사용하거나 이미지 없이 등록해주세요.",
-            variant: "warning",
+          // 이미지 리사이징
+          const resizedImage = await resizeImage(image)
+          setUploadProgress(30)
+
+          setLoadingStep("이미지 업로드 중...")
+          // 이미지 업로드 (파일명에 타임스탬프 추가)
+          const timestamp = Date.now()
+          const filename = `${timestamp}-${image.name.replace(/[^a-zA-Z0-9.]/g, "_").substring(0, 30)}`
+          const storageRef = ref(storage, `products/${userId}/${filename}`)
+
+          // 업로드 작업 생성
+          const uploadTask = uploadBytesResumable(storageRef, resizedImage)
+
+          // 진행 상황 모니터링
+          await new Promise<void>((resolve, reject) => {
+            uploadTask.on(
+              "state_changed",
+              (snapshot) => {
+                // 진행 상황 업데이트
+                const progress = Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 50) + 30
+                setUploadProgress(progress <= 80 ? progress : 80)
+              },
+              (error) => {
+                // 업로드 실패
+                console.error("Upload failed:", error)
+                setUploadError("이미지 업로드 중 오류가 발생했습니다.")
+
+                // 재시도 로직
+                if (retryCount < maxRetries) {
+                  setRetryCount((prev) => prev + 1)
+                }
+
+                reject(error)
+              },
+              () => {
+                // 업로드 완료
+                resolve()
+              },
+            )
           })
 
-          // 사용자에게 선택지 제공
-          setUploadError("CORS 정책으로 인해 이미지 업로드가 제한됩니다. URL을 사용하거나 이미지 없이 등록해주세요.")
-          setIsSubmitting(false)
-          return
+          // URL 가져오기
+          setUploadProgress(85)
+          imageUrl = await getDownloadURL(uploadTask.snapshot.ref)
+          setUploadProgress(90)
+        } catch (error) {
+          console.error("이미지 업로드 실패:", error)
+
+          // 최대 재시도 횟수를 초과한 경우
+          if (retryCount >= maxRetries) {
+            toast({
+              title: "이미지 업로드 실패",
+              description: "이미지 없이 상품을 등록하시겠습니까?",
+              variant: "destructive",
+            })
+
+            // 사용자에게 이미지 없이 계속할지 물어보기
+            setUploadError("이미지 업로드에 실패했습니다. 이미지 없이 등록하시겠습니까?")
+            return
+          }
+
+          throw error
         }
       }
 
@@ -179,7 +305,7 @@ export default function ProductForm({ onSuccess, onCancel }: ProductFormProps) {
         description,
         price: Number.parseFloat(price),
         category,
-        imageUrl: finalImageUrl,
+        imageUrl,
         sellerId: userId,
         sellerName: userData?.name || "",
         school: userData?.school || "",
@@ -198,15 +324,18 @@ export default function ProductForm({ onSuccess, onCancel }: ProductFormProps) {
       if (onSuccess) onSuccess()
     } catch (error: any) {
       console.error("Error adding product:", error)
-      toast({
-        title: "상품 등록 실패",
-        description: error.message || "상품 등록 중 오류가 발생했습니다.",
-        variant: "destructive",
-      })
-    } finally {
-      setIsSubmitting(false)
-      setLoadingStep("")
-      setUploadProgress(0)
+
+      // 최대 재시도 횟수를 초과한 경우에만 오류 메시지 표시
+      if (retryCount >= maxRetries) {
+        toast({
+          title: "상품 등록 실패",
+          description: error.message || "상품 등록 중 오류가 발생했습니다.",
+          variant: "destructive",
+        })
+        setIsSubmitting(false)
+        setLoadingStep("")
+        setUploadProgress(0)
+      }
     }
   }
 
@@ -279,7 +408,7 @@ export default function ProductForm({ onSuccess, onCancel }: ProductFormProps) {
               variant="ghost"
               size="sm"
               onClick={handleSkipImage}
-              disabled={isSubmitting}
+              disabled={isSubmitting || !image}
               className="text-xs text-gray-500 hover:text-gray-700"
             >
               이미지 없이 등록
@@ -288,78 +417,41 @@ export default function ProductForm({ onSuccess, onCancel }: ProductFormProps) {
         </div>
 
         {!skipImage ? (
-          <div className="space-y-4">
-            <Tabs defaultValue="url" onValueChange={(value) => setImageInputMethod(value as "upload" | "url")}>
-              <TabsList className="grid w-full grid-cols-2">
-                <TabsTrigger value="url">이미지 URL</TabsTrigger>
-                <TabsTrigger value="upload" disabled>
-                  파일 업로드 (비활성화)
-                </TabsTrigger>
-              </TabsList>
-
-              <TabsContent value="url" className="space-y-4 pt-2">
-                <div className="flex gap-2">
-                  <Input
-                    placeholder="이미지 URL을 입력하세요"
-                    value={imageUrl}
-                    onChange={handleImageUrlChange}
-                    disabled={isSubmitting}
-                  />
-                  <Button
-                    type="button"
-                    onClick={handlePreviewImageUrl}
-                    disabled={isSubmitting || !imageUrl}
-                    className="whitespace-nowrap"
-                  >
-                    미리보기
-                  </Button>
-                </div>
-                <div className="text-xs text-gray-500">
-                  <p>* 외부 이미지 URL을 사용할 경우 이미지가 삭제되거나 변경될 수 있습니다.</p>
-                  <p>* 저작권에 문제가 없는 이미지를 사용해주세요.</p>
-                </div>
-              </TabsContent>
-
-              <TabsContent value="upload" className="space-y-4 pt-2">
-                <div
-                  onClick={() => fileInputRef.current?.click()}
-                  className="cursor-pointer border-2 border-dashed rounded-md p-4 flex flex-col items-center justify-center"
-                >
-                  <div className="py-8 flex flex-col items-center">
-                    <Camera className="h-12 w-12 text-gray-400 mb-2" />
-                    <p className="text-sm text-gray-500">CORS 정책으로 인해 비활성화됨</p>
-                    <p className="text-xs text-gray-400 mt-1">이미지 URL을 사용해주세요</p>
-                  </div>
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept="image/jpeg,image/png,image/gif"
-                    onChange={handleImageChange}
-                    className="hidden"
-                    disabled={true}
-                  />
-                </div>
-              </TabsContent>
-            </Tabs>
-
-            {imagePreview && (
-              <div className="mt-4 border rounded-md p-2">
-                <p className="text-sm font-medium mb-2">이미지 미리보기:</p>
+          <div
+            onClick={() => fileInputRef.current?.click()}
+            className={`
+              cursor-pointer border-2 border-dashed rounded-md p-4 
+              flex flex-col items-center justify-center
+              ${imagePreview ? "border-green-300" : "border-gray-300 hover:border-green-300"}
+              transition-colors
+            `}
+          >
+            {imagePreview ? (
+              <div className="relative w-full">
                 <img
                   src={imagePreview || "/placeholder.svg"}
                   alt="Product preview"
-                  className="w-full h-48 object-contain rounded-md"
-                  onError={() => {
-                    setImagePreview(null)
-                    toast({
-                      title: "이미지 로드 실패",
-                      description: "이미지를 불러올 수 없습니다. 다른 URL을 사용해주세요.",
-                      variant: "destructive",
-                    })
-                  }}
+                  className="w-full h-48 object-cover rounded-md"
                 />
+                <div className="absolute inset-0 bg-black bg-opacity-30 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity rounded-md">
+                  <p className="text-white text-sm font-medium">이미지 변경하기</p>
+                </div>
+              </div>
+            ) : (
+              <div className="py-8 flex flex-col items-center">
+                <Camera className="h-12 w-12 text-gray-400 mb-2" />
+                <p className="text-sm text-gray-500">이미지를 업로드하려면 클릭하세요</p>
+                <p className="text-xs text-gray-400 mt-1">권장: 1200x1200 이하 크기의 이미지</p>
               </div>
             )}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/jpeg,image/png,image/gif"
+              onChange={handleImageChange}
+              className="hidden"
+              disabled={isSubmitting}
+            />
           </div>
         ) : (
           <div className="border-2 border-dashed rounded-md p-4 text-center">
@@ -390,10 +482,13 @@ export default function ProductForm({ onSuccess, onCancel }: ProductFormProps) {
               type="button"
               variant="default"
               size="sm"
-              onClick={() => setImageInputMethod("url")}
+              onClick={() => {
+                setUploadError(null)
+                setRetryCount((prev) => prev + 1)
+              }}
               className="text-xs"
             >
-              URL 사용하기
+              다시 시도
             </Button>
           </div>
         </Alert>
